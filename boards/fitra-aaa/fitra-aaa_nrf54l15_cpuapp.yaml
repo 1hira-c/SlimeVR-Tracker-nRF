@@ -1,0 +1,10 @@
+identifier: fitra-aaa/nrf54l15/cpuapp
+name: 1hira FITRA-AAA (nRF54L15/AN54LQ-15)
+vendor: 1hira
+arch: arm
+toolchain:
+  - zephyr
+sysbuild: true
+ram: 188
+flash: 1428
+supported: []

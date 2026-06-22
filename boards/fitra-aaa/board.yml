@@ -1,0 +1,46 @@
+board:
+  name: fitra-aaa
+  full_name: 1hira FITRA-AAA
+  vendor: 1hira
+  socs:
+    - name: nrf54l15
+      variants:
+        - name: xip
+          cpucluster: cpuflpr
+runners:
+  run_once:
+    '--recover':
+      - runners:
+          - nrfjprog
+          - nrfutil
+          - pyocd
+        run: first
+        groups:
+          - boards:
+              - fitra-aaa/nrf54l15/cpuapp
+              - fitra-aaa/nrf54l15/cpuflpr
+              - fitra-aaa/nrf54l15/cpuflpr/xip
+    '--erase':
+      - runners:
+          - nrfjprog
+          - jlink
+          - nrfutil
+          - pyocd
+        run: first
+        groups:
+          - boards:
+              - fitra-aaa/nrf54l15/cpuapp
+              - fitra-aaa/nrf54l15/cpuflpr
+              - fitra-aaa/nrf54l15/cpuflpr/xip
+    '--reset':
+      - runners:
+          - nrfjprog
+          - jlink
+          - nrfutil
+          - pyocd
+        run: last
+        groups:
+          - boards:
+              - fitra-aaa/nrf54l15/cpuapp
+              - fitra-aaa/nrf54l15/cpuflpr
+              - fitra-aaa/nrf54l15/cpuflpr/xip

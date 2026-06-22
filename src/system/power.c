@@ -92,13 +92,19 @@ static void sys_disconnect_interface_pins(void)
 	// interface pins are disconnected according to devicetree, so only need to disconnect any cs pins
 	// int pin already configured by power off
 #if DT_SPI_DEV_HAS_CS_GPIOS(DT_NODELABEL(imu_spi))
-	uint32_t imu_cs_gpios = DT_SPI_DEV_CS_GPIOS_PIN(DT_NODELABEL(imu_spi));
+	uint32_t imu_cs_gpios = DT_GPIO_PIN_BY_IDX(DT_BUS(DT_NODELABEL(imu_spi)),
+		cs_gpios, DT_REG_ADDR_RAW(DT_NODELABEL(imu_spi)))
+		+ 32 * DT_PROP(DT_GPIO_CTLR_BY_IDX(DT_BUS(DT_NODELABEL(imu_spi)),
+		cs_gpios, DT_REG_ADDR_RAW(DT_NODELABEL(imu_spi))), port);
 	LOG_INF("IMU CS GPIO pin: %u", imu_cs_gpios);
 	nrf_gpio_cfg_default(imu_cs_gpios);
 	LOG_INF("Disconnected IMU CS GPIO");
 #endif
 #if DT_SPI_DEV_HAS_CS_GPIOS(DT_NODELABEL(mag_spi))
-	uint32_t mag_cs_gpios = DT_SPI_DEV_CS_GPIOS_PIN(DT_NODELABEL(mag_spi)));
+	uint32_t mag_cs_gpios = DT_GPIO_PIN_BY_IDX(DT_BUS(DT_NODELABEL(mag_spi)),
+		cs_gpios, DT_REG_ADDR_RAW(DT_NODELABEL(mag_spi)))
+		+ 32 * DT_PROP(DT_GPIO_CTLR_BY_IDX(DT_BUS(DT_NODELABEL(mag_spi)),
+		cs_gpios, DT_REG_ADDR_RAW(DT_NODELABEL(mag_spi))), port);
 	LOG_INF("Magnetometer CS GPIO pin: %u", mag_cs_gpios);
 	nrf_gpio_cfg_default(mag_cs_gpios);
 	LOG_INF("Disconnected Magnetometer CS GPIO");
@@ -501,6 +507,13 @@ static void power_thread(void)
 		bool docked = dock_read();
 		bool charging = chg_read();
 		bool charged = stby_read();
+		bool charge_state_supported = battery_charge_state_supported();
+
+		if (!charge_state_supported)
+		{
+			charging = false;
+			charged = false;
+		}
 
 		float temp;
 		int chg_ret = sensor_get_sensor_temperature(&temp);
@@ -537,19 +550,28 @@ static void power_thread(void)
 		if (samples < BATTERY_SAMPLES)
 			samples++;
 
-		bool abnormal_reading = battery_mV < 100 || battery_mV > 6000;
-		bool battery_available = battery_mV > 1500 && !abnormal_reading; // Keep working without the battery connected, otherwise it is obviously too dead to boot system
+		bool abnormal_reading = battery_mV < battery_abnormal_min_mV()
+			|| battery_mV > battery_abnormal_max_mV();
+		bool battery_available = battery_mV > battery_available_min_mV() && !abnormal_reading;
 		bool battery_discharged = battery_available && (average_pptt >= 0 ? average_pptt : battery_pptt) == 0;
 		// Separate detection of vin
-		if (!plugged && battery_mV > 4300 && !abnormal_reading)
-			plugged = true;
-		else if ((plugged && battery_mV <= 4250) || abnormal_reading)
-			plugged = false;
+		if (battery_voltage_plug_detect_enabled())
+		{
+			if (!plugged && battery_mV > battery_plugged_threshold_mV() && !abnormal_reading)
+				plugged = true;
+			else if ((plugged && battery_mV <= battery_unplugged_threshold_mV()) || abnormal_reading)
+				plugged = false;
+		}
 #ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
 		bool usb_plugged = NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk;
 #else
 		bool usb_plugged = false;
 #endif
+		if (!charge_state_supported)
+		{
+			plugged = false;
+			usb_plugged = false;
+		}
 
 		if (!device_plugged && (charging || charged || plugged || usb_plugged))
 		{
