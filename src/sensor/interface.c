@@ -116,7 +116,7 @@ const sensor_ext_ssi_t *sensor_interface_ext_get(void)
 
 // TODO: spi config by device
 
-int ssi_write(enum sensor_interface_dev dev, const uint8_t *buf, uint32_t num_bytes)
+static inline int ssi_write(enum sensor_interface_dev dev, const uint8_t *buf, uint32_t num_bytes)
 {
 	switch (sensor_interface_dev_spec[dev])
 	{
@@ -124,7 +124,6 @@ int ssi_write(enum sensor_interface_dev dev, const uint8_t *buf, uint32_t num_by
 		tx_bufs[0].buf = (void *)buf;
 		tx_bufs[0].len = num_bytes;
 		tx.count = 1;
-		k_usleep(1);
 #if DEBUG
 		LOG_DBG("ssi_write: dev=%d, num_bytes=%zu", dev, num_bytes);
 		LOG_HEXDUMP_DBG(buf, num_bytes, "ssi_write: buf");
@@ -136,7 +135,7 @@ int ssi_write(enum sensor_interface_dev dev, const uint8_t *buf, uint32_t num_by
 		int64_t start = k_uptime_ticks();
 		int err = spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, NULL);
 		int64_t end = k_uptime_ticks();
-		printk("ssi_write: %zuB, %.2f MB/s\n", num_bytes, (double)num_bytes / (double)k_ticks_to_us_near64(end - start));
+		printk("ssi_write: %zuB in %llu us, %.2f MB/s\n", num_bytes, k_ticks_to_us_near64(end - start), (double)num_bytes / (double)k_ticks_to_us_near64(end - start));
 		return err;
 #else
 		return spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, NULL);
@@ -148,7 +147,7 @@ int ssi_write(enum sensor_interface_dev dev, const uint8_t *buf, uint32_t num_by
 	}
 }
 
-int ssi_read(enum sensor_interface_dev dev, uint8_t *buf, uint32_t num_bytes)
+static inline int ssi_read(enum sensor_interface_dev dev, uint8_t *buf, uint32_t num_bytes)
 {
 	switch (sensor_interface_dev_spec[dev])
 	{
@@ -159,7 +158,6 @@ int ssi_read(enum sensor_interface_dev dev, uint8_t *buf, uint32_t num_bytes)
 		rx_bufs[1].buf = buf;
 		rx_bufs[1].len = num_bytes;
 		rx.count = 2;
-		k_usleep(1);
 #if DEBUG
 		LOG_DBG("ssi_read: dev=%d, num_bytes=%zu", dev, num_bytes);
 		int err = spi_transceive_dt(sensor_interface_dev_spi[dev], NULL, &rx);
@@ -172,7 +170,7 @@ int ssi_read(enum sensor_interface_dev dev, uint8_t *buf, uint32_t num_bytes)
 		int64_t start = k_uptime_ticks();
 		int err = spi_transceive_dt(sensor_interface_dev_spi[dev], NULL, &rx);
 		int64_t end = k_uptime_ticks();
-		printk("ssi_read: %zuB, %.2f MB/s\n", num_bytes, (double)num_bytes / (double)k_ticks_to_us_near64(end - start));
+		printk("ssi_read: %zuB in %llu us, %.2f MB/s\n", num_bytes, k_ticks_to_us_near64(end - start), (double)num_bytes / (double)k_ticks_to_us_near64(end - start));
 		return err;
 #else
 		return spi_transceive_dt(sensor_interface_dev_spi[dev], NULL, &rx);
@@ -187,7 +185,7 @@ int ssi_read(enum sensor_interface_dev dev, uint8_t *buf, uint32_t num_bytes)
 	}
 }
 
-int ssi_write_read(enum sensor_interface_dev dev, const void *write_buf, size_t num_write, void *read_buf, size_t num_read)
+static inline int ssi_write_read(enum sensor_interface_dev dev, const void *write_buf, size_t num_write, void *read_buf, size_t num_read)
 {
 	// TODO: is separate read/write better for spi?
 	switch (sensor_interface_dev_spec[dev])
@@ -201,7 +199,6 @@ int ssi_write_read(enum sensor_interface_dev dev, const void *write_buf, size_t 
 		rx_bufs[1].buf = read_buf;
 		rx_bufs[1].len = num_read;
 		rx.count = 2;
-		k_usleep(1);
 #if DEBUG
 		LOG_DBG("ssi_write_read: dev=%d, num_write=%zu, num_read=%zu", dev, num_write, num_read);
 		LOG_HEXDUMP_DBG(write_buf, num_write, "ssi_write_read: write_buf");
@@ -215,7 +212,7 @@ int ssi_write_read(enum sensor_interface_dev dev, const void *write_buf, size_t 
 		int64_t start = k_uptime_ticks();
 		int err = spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, &rx);
 		int64_t end = k_uptime_ticks();
-		printk("ssi_write_read: %zuB, %.2f MB/s\n", (num_write + num_read), (double)(num_write + num_read) / (double)k_ticks_to_us_near64(end - start));
+		printk("ssi_write_read: %zuB in %llu us, %.2f MB/s\n", (num_write + num_read), k_ticks_to_us_near64(end - start), (double)(num_write + num_read) / (double)k_ticks_to_us_near64(end - start));
 		return err;
 #else
 		return spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, &rx);
@@ -251,7 +248,6 @@ int ssi_burst_write(enum sensor_interface_dev dev, uint8_t start_addr, const uin
 		tx_bufs[1].buf = (void *)buf;
 		tx_bufs[1].len = num_bytes;
 		tx.count = 2;
-		k_usleep(1);
 #if DEBUG
 		LOG_DBG("ssi_burst_write: dev=%d, start_addr=0x%02X, num_bytes=%d", dev, start_addr, num_bytes);
 		LOG_HEXDUMP_DBG(&start_addr, 1, "ssi_burst_write: start_addr");
@@ -264,7 +260,7 @@ int ssi_burst_write(enum sensor_interface_dev dev, uint8_t start_addr, const uin
 		int64_t start = k_uptime_ticks();
 		int err = spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, NULL);
 		int64_t end = k_uptime_ticks();
-		printk("ssi_burst_write: %zuB, %.2f MB/s\n", num_bytes, (double)num_bytes / (double)k_ticks_to_us_near64(end - start));
+		printk("ssi_burst_write: %zuB in %llu us, %.2f MB/s\n", num_bytes, k_ticks_to_us_near64(end - start), (double)num_bytes / (double)k_ticks_to_us_near64(end - start));
 		return err;
 #else
 		return spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, NULL);
