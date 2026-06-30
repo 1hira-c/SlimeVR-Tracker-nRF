@@ -27,6 +27,7 @@
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
 #if defined(NRF54L15_XXAA)
 #include <hal/nrf_clock.h>
+#include <hal/nrf_power.h>
 #endif /* defined(NRF54L15_XXAA) */
 #include <zephyr/sys/crc.h>
 
@@ -308,6 +309,11 @@ int esb_initialize(bool tx)
 		return err;
 	}
 
+#if defined(NRF54L15_XXAA) && !defined(CONFIG_ESB_CLOCK_INIT)
+	// Errata 20 fallback: CONFIG_ESB_CLOCK_INIT normally applies this in ESB glue.
+	nrf_power_task_trigger(NRF_POWER, NRF_POWER_TASK_CONSTLAT);
+#endif /* defined(NRF54L15_XXAA) && !defined(CONFIG_ESB_CLOCK_INIT) */
+
 	esb_initialized = true;
 	return 0;
 }
@@ -321,6 +327,9 @@ void esb_deinitialize(void)
 		esb_disable();
 	}
 	esb_initialized = false;
+#if defined(NRF54L15_XXAA) && !defined(CONFIG_ESB_CLOCK_INIT)
+	nrf_power_task_trigger(NRF_POWER, NRF_POWER_TASK_LOWPWR);
+#endif /* defined(NRF54L15_XXAA) && !defined(CONFIG_ESB_CLOCK_INIT) */
 }
 
 inline void esb_set_addr_discovery(void)

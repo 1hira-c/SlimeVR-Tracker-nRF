@@ -30,6 +30,19 @@
 	zephyr,user {
 		/* P0.01 drives nPM2100 GPIO0 to control the LS (load switch) for LEDs */
 		led-en-gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+
+		/* LSM6DSV INT1 -> P0.00. Enables IMU interrupt-driven sampling
+		 * (MCU sleeps between FIFO-threshold events instead of polling) and the
+		 * WOM wake sense for system-off. INT1 is active-low/open-drain; the
+		 * pull-up + falling-edge are applied at runtime from the driver's
+		 * pin_config (see sensor.c / LSM6DSV.c). The DT flag below is for
+		 * documentation; the edge/pull are overridden at runtime.
+		 *
+		 * NOTE: re-enabling this exposed nRF54L15 Errata 20 (RADIO TX payload
+		 * corrupted/radio stuck if CPU/MCU power domain sleeps when RADIO
+		 * starts TX) because the MCU now sleeps between IMU interrupts. Fixed
+		 * via the CONSTLAT/LOWPWR workaround in src/connection/esb.c. */
+		int0-gpios = <&gpio0 0 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -83,12 +96,17 @@
 /* SPI IMU (+ optional SPI magnetometer) */
 &spi00 {
 	status = "okay";
+	/* ファームウェア(sensor.c のスキャンと LSM6DSV ドライバ)が SPI 周波数を 10MHz に
+	 * ハードコードするが、nRF54L SPIM00 のベースクロックでは 10MHz が割り切れず
+	 * nrfx に -22 で弾かれる。コントローラの max-frequency=8MHz で 8MHz にクランプ
+	 * (有効: プリスケーラ=16/8/2 で偶数かつ[2,126]範囲内)。 */
+	max-frequency = <DT_FREQ_M(8)>;
 	/* LSM6DSV16X requires SPI Mode 0 (CPOL=0, CPHA=0) or Mode 3 (CPOL=1, CPHA=1) */
 	/* Try Mode 3 - some sensors work better with this mode */
 
 	imu_spi: imu_spi@0 {
 		compatible = "vnd,spi-device";
-		spi-max-frequency = <DT_FREQ_M(8)>; /* Start with 1MHz for debugging */
+		spi-max-frequency = <DT_FREQ_M(8)>;
 		label = "imu-spi";
 		reg = <0>;
 		/* Mode 3: CPOL=1, CPHA=1 */
