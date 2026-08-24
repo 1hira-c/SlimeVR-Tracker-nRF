@@ -212,8 +212,10 @@ int sensor_scan(void)
 	sensor_scan_read();
 	int imu_id = -1;
 #if SENSOR_IMU_SPI_EXISTS
-	// for SPI scan, set frequency of 10MHz, it will be set later by the driver initialization if needed
-	sensor_imu_spi_dev.config.frequency = MHZ(10);
+	// Scan at up to 10 MHz without exceeding the device-tree limit. Some
+	// controllers (including nRF54L15 SPIM00) reject unsupported requests.
+	if (sensor_imu_spi_dev.config.frequency > MHZ(10))
+		sensor_imu_spi_dev.config.frequency = MHZ(10);
 	LOG_INF("Scanning SPI bus for IMU");
 	imu_id = sensor_scan_imu_spi(&sensor_imu_spi_dev, &sensor_imu_dev_reg);
 	if (imu_id >= 0)

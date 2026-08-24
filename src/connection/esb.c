@@ -47,7 +47,8 @@ int64_t last_tx_fail = 0;
 
 static struct esb_payload rx_payload;
 static struct esb_payload tx_payload = ESB_CREATE_PAYLOAD(0,
-														  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+														  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+														  0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_pair = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0, 0, 0, 0, 0);
 
@@ -83,6 +84,15 @@ void event_handler(struct esb_evt const *event)
 	case ESB_EVENT_TX_SUCCESS:
 		if (!paired_addr[0]) // zero, not paired
 			pairing_packets++; // keep track of pairing state
+		if (esb_paired)
+		{
+			/* Normal traffic is broadcast/no-ACK. A completed TX only means
+			 * the radio accepted it; receiver presence is intentionally unknown. */
+			tx_errors = 0;
+			last_tx_success = k_uptime_get();
+			clocks_stop();
+			break;
+		}
 		if (tx_errors >= TX_ERROR_THRESHOLD && tx_errors < TX_ERROR_THRESHOLD + TX_ERROR_CLEAR_RATE && last_tx_fail == 0)
 		{
 			last_tx_success = 0; // reset last_tx_success on threshold reached
@@ -97,6 +107,13 @@ void event_handler(struct esb_evt const *event)
 			clocks_stop();
 		break;
 	case ESB_EVENT_TX_FAILED:
+		if (esb_paired)
+		{
+			/* Do not interpret a no-ACK broadcast as receiver loss. */
+			LOG_DBG("Broadcast TX failed");
+			clocks_stop();
+			break;
+		}
 		if (tx_errors < TX_ERROR_MAX)
 			tx_errors++;
 		if (tx_errors == TX_ERROR_THRESHOLD && last_tx_success == 0) // consecutive failure to transmit
@@ -495,11 +512,7 @@ void esb_write(uint8_t *data)
 	if (!clock_status)
 		clocks_start();
 	tx_payload.pipe = 1; // using base address 1
-#if defined(NRF54L15_XXAA) // TODO: esb halts with ack and tx fail
 	tx_payload.noack = true;
-#else
-	tx_payload.noack = false;
-#endif
 	memcpy(tx_payload.data, data, tx_payload.length);
 	esb_flush_tx(); // this will clear all transmissions even if they did not complete
 	esb_write_payload(&tx_payload); // Add transmission to queue
@@ -514,7 +527,6 @@ bool esb_ready(void)
 static void esb_thread(void)
 {
 	bool use_hid = CONFIG_0_SETTINGS_READ(CONFIG_0_CONNECTION_OVER_HID);
-	bool use_shutdown = CONFIG_0_SETTINGS_READ(CONFIG_0_USER_SHUTDOWN);
 	int64_t start_time = k_uptime_get();
 
 	// Read paired address from retained
@@ -527,20 +539,10 @@ static void esb_thread(void)
 			esb_pair();
 			esb_initialize(true);
 		}
-		if (tx_errors >= TX_ERROR_THRESHOLD)
-		{
-			if (!get_status(SYS_STATUS_CONNECTION_ERROR) && (!use_hid || !get_status(SYS_STATUS_USB_CONNECTED))) // only raise error while not potentially communicating by usb
-				set_status(SYS_STATUS_CONNECTION_ERROR, true);
-			if (use_shutdown && k_uptime_get() - last_tx_success > CONFIG_3_SETTINGS_READ(CONFIG_3_CONNECTION_TIMEOUT_DELAY)) // shutdown if receiver is not detected // TODO: is shutdown necessary if usb is connected at the time?
-			{
-				LOG_WRN("No response from receiver in %dm", CONFIG_3_SETTINGS_READ(CONFIG_3_CONNECTION_TIMEOUT_DELAY) / 60000);
-				sys_request_system_off(false);
-			}
-		}
-		else if (tx_errors < TX_ERROR_THRESHOLD && get_status(SYS_STATUS_CONNECTION_ERROR) && k_uptime_get() - last_tx_fail > 3000) // TODO: there is possibly some race condition causing tx_error to potentially be above zero more often than not, so the check is more lenient; tx_error under threshold and last errors above threshold was not recent
-		{
+		/* Broadcast mode deliberately has no receiver-presence signal. Pairing
+		 * still uses ACKs and remains the only connection failure gate. */
+		if (esb_paired && get_status(SYS_STATUS_CONNECTION_ERROR))
 			set_status(SYS_STATUS_CONNECTION_ERROR, false);
-		}
 		k_msleep(100);
 	}
 }

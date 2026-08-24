@@ -36,7 +36,11 @@ static uint8_t tracker_id, batt, batt_v, sensor_temp, imu_id, mag_id, tracker_st
 static uint8_t tracker_svr_status = SVR_STATUS_OK;
 static float sensor_q[4], sensor_a[3], sensor_m[3];
 
-static uint8_t data_buffer[21] = {0};
+/* RF v2: 16 byte application payload + 6 byte tracker address + sequence,
+ * version, and CRC32. ESB dynamic payloads are limited to 32 bytes. */
+#define RF_V2_PACKET_SIZE 28
+#define RF_V2_VERSION 0x02
+static uint8_t data_buffer[RF_V2_PACKET_SIZE] = {0};
 static int64_t last_data_time = 0;
 static uint8_t packet_sequence = 0;
 
@@ -479,7 +483,7 @@ static int64_t last_status2_time = 0;
 
 void connection_thread(void)
 {
-	uint8_t data_copy[21];
+	uint8_t data_copy[RF_V2_PACKET_SIZE];
 	// TODO: checking for connection_update events from sensor_loop, here we will time and send them out
 	while (1)
 	{
@@ -493,9 +497,12 @@ void connection_thread(void)
 			last_data_time = 0;
 			memcpy(data_copy, data_buffer, sizeof(data_copy));
 			k_mutex_unlock(&data_buffer_mutex);
-			data_copy[20] = packet_sequence++;
-			uint32_t *crc_ptr = (uint32_t *)&data_copy[16];
-			*crc_ptr = crc32_k_4_2_update(0x93a409eb, data_copy, 16);
+			uint64_t tracker_addr = *(uint64_t *)NRF_FICR->DEVICEADDR;
+			memcpy(&data_copy[16], &tracker_addr, 6);
+			data_copy[22] = packet_sequence++;
+			data_copy[23] = RF_V2_VERSION;
+			uint32_t *crc_ptr = (uint32_t *)&data_copy[24];
+			*crc_ptr = crc32_k_4_2_update(0x93a409eb, data_copy, 24);
 			esb_write(data_copy);
 		}
 		// mag is higher priority (skip accel, quat is full precision)

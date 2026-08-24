@@ -36,7 +36,8 @@ LOG_MODULE_REGISTER(LSM6DSV, LOG_LEVEL_DBG);
 int lsm_init(float clock_rate, float accel_time, float gyro_time, float *accel_actual_time, float *gyro_actual_time)
 {
 	// setup interface for SPI
-	sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(10), 0);
+	// LSM6DSV16X is wired to nRF54L15 SPIM00, whose configured ceiling is 8 MHz.
+	sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(8), 0);
 	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL6, gyro_fs); // set gyro FS
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL8, accel_fs); // set accel FS
 	if (err)
